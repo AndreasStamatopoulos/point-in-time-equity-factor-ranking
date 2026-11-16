@@ -1,0 +1,31 @@
+# NEVER publish user-provided market-data files, provider archives or credentials.
+.env
+.env.*
+*.key
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.spyproject/
+.idea/
+.DS_Store
+
+# Financial raw and derived datasets. Keep only explicit public templates.
+data/*.csv
+data/*.parquet
+data/*.json
+data/cache/
+data/raw/**
+data/vendor/**
+!data/universe_165_current.csv
+!data/analyst_consensus_snapshots_TEMPLATE.csv
+!data/eps_vintage_approval_TEMPLATE.json
+!data/raw/.gitkeep
+!data/vendor/.gitkeep
+!data/vendor/README.md
+
+# Model outputs and backtests from real/vendor data
+results/**
+!results/.gitkeep
+*.zip

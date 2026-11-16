@@ -104,3 +104,20 @@ python run_experiments.py --trials 12 --rebalance-months 6
 ```
 
 Hyperparameters for MLPs are selected by **Optuna TPE** using nested, purged, date-based validation. The code guards against using six-month labels that would not yet have matured before each forecast date. Results are written to `results/comparison/` and are **exploratory**, not evidence of a profitable strategy. See [full experimental protocol](docs/EXPERIMENTS.md) or [Greek summary](docs/EXPERIMENTS_GR.md). The sixth signal (Earnings Revisions) remains blocked pending verified point-in-time consensus vintages.
+
+## Phase 2 — diversified 165-stock universe (data-quality gates)
+
+The original 24-stock comparison is preserved as an exploratory baseline.
+A **forward-only** shortlist of **165 distinct issuers (15 per GICS sector across 11 sectors)** is available at [data/universe_165_current.csv](data/universe_165_current.csv). This snapshot is **NOT** historical index membership and **must not** be used to backfill historical training labels.
+
+[Data integrity protocol](docs/UNIVERSE_DATA_QUALITY.md) · [PIT dataset builder](08_build_pit_dataset.py) · [Source snapshot generator](09_generate_current_universe.py)
+
+The Phase-2 historical dataset **is not yet complete**. Proper backtesting requires archived membership/security identifiers, full vendor-verified total returns (splits, dividends, delistings), and filing-time fundamental vintages. The builder **fails closed** when these data are missing. Historical EPS revisions remain unavailable; do not report this as a validated six-feature 165-stock result.
+
+Run locally after supplying licensed/private historical CSVs in `data/vendor/`:
+
+```bash
+python -m pytest -q
+python 08_build_pit_dataset.py --input-dir data/vendor --asof 2026-10-31 --start 2017-01-01
+python run_experiments.py --trials 12 --rebalance-months 6
+```
