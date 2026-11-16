@@ -121,3 +121,20 @@ python -m pytest -q
 python 08_build_pit_dataset.py --input-dir data/vendor --asof 2026-10-31 --start 2017-01-01
 python run_experiments.py --trials 12 --rebalance-months 6
 ```
+
+
+## Historical S&P 500 membership — separate free-data track
+
+Pinned source: [fja05680/sp500](https://github.com/fja05680/sp500) at commit
+`a2430f2af0c79ddf0748e91de11bdeb1616ab5a7`. The
+[historical intervals CSV](data/universe/historical/sp500_membership_intervals_fja.csv)
+contains 1,262 index-membership intervals including some former constituents
+and re-entries. Generate date-specific eligibility with:
+`python 10_build_historical_membership.py --start 2015-01-01 --end 2025-12-31`.
+Read [limitations and data checks](docs/HISTORICAL_UNIVERSE.md).
+
+This is **membership, not historical prices or accounting information**.
+The dataset is a retrospective reconstruction, not an audited PIT security
+master. The old 24-stock baseline and the current 165-stock snapshot remain
+**separate**. Do not claim a 500-stock predictive backtest until verified
+historical adjusted returns, delistings, filing vintages, and security IDs exist.
