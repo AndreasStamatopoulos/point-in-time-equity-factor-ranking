@@ -1,0 +1,20 @@
+{
+  "data_asof": "2026-10-31",
+  "feature_count": 5,
+  "sixth_feature": "historical earnings revisions not available",
+  "initial_stocks": 24,
+  "n_completed_oos_predictions": 1045,
+  "n_completed_oos_months": 128,
+  "rank_ic": 0.07709517045454546,
+  "r2": -0.05437947566520984,
+  "cagr_strategy": 0.1861525593504556,
+  "cagr_equal_weight": 0.17629376146736053,
+  "n_nonoverlapping_6mo_periods": 22,
+  "audit_status": "legacy source-level validation blocked; unit tests pass",
+  "limitations": [
+    "survivorship",
+    "incomplete factor coverage",
+    "monthly fill approximation",
+    "missing EPS revisions"
+  ]
+}
