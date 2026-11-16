@@ -92,3 +92,15 @@ GitHub Actions runs tests on every push / pull request.
 
 ## Attribution and scope
 This repository organizes and documents an existing academic codebase; published results are **conditional historical research, not an investable audited track record**. Code is under MIT. Market-data sources and third-party datasets retain their own terms. A neural extension is **out of scope** for this version, following the professor's original assignment.
+
+## Phase 2 — classic regression vs ML vs hybrid neural residuals
+
+The original no-neural-network baseline remains unchanged. A **separate experimental extension** now compares **six models on identical historical decision dates**: OLS, LASSO, Ridge, Elastic Net, MLP trained with squared-error loss, and OLS + a second MLP trained on *strictly out-of-sample historical OLS residuals*.
+
+```bash
+pip install -r requirements.txt
+python -m pytest -q
+python run_experiments.py --trials 12 --rebalance-months 6
+```
+
+Hyperparameters for MLPs are selected by **Optuna TPE** using nested, purged, date-based validation. The code guards against using six-month labels that would not yet have matured before each forecast date. Results are written to `results/comparison/` and are **exploratory**, not evidence of a profitable strategy. See [full experimental protocol](docs/EXPERIMENTS.md) or [Greek summary](docs/EXPERIMENTS_GR.md). The sixth signal (Earnings Revisions) remains blocked pending verified point-in-time consensus vintages.

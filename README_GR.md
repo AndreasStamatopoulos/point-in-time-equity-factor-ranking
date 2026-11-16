@@ -22,3 +22,7 @@
 Τα 24 stocks είναι επιλεγμένοι survivors, αλλά σε πολλές ημερομηνίες μόνο 6–11 έχουν πλήρη δεδομένα. Το πρωτόκολλο είναι walk-forward, όμως δεν έχουν διορθωθεί όλα τα vendor/point-in-time και survivorship ζητήματα. Υψηλό CAGR σε backtest **δεν σημαίνει αποδεδειγμένο Alpha**. Επίσης το προηγούμενο αρχικό report και η παρούσα replay μέθοδος δεν έχουν ακριβώς ίδια μεθοδολογία — μην συγχέεις τα νούμερα.
 
 Δες το `README.md` (αγγλικά), το `docs/METHODOLOGY.md` και το `docs/CV_ENTRY.md`.
+
+## Φάση 2 — Σύγκριση κλασικού regression, ML και υβριδικού
+
+Προστέθηκαν OLS, Ridge, LASSO, Elastic Net, ανεξάρτητο MLP με squared-error loss και υβριδικό **OLS + MLP στα ιστορικά out-of-sample residuals**. Το hyperparameter tuning γίνεται με Optuna TPE, με χρονολογική επικύρωση και αυστηρή εξαίρεση μη ώριμων εξαμηνιαίων αποτελεσμάτων. Εντολές: `pip install -r requirements.txt` και `python run_experiments.py --trials 12`. Διαβάστε [τις ελληνικές σημειώσεις](docs/EXPERIMENTS_GR.md). **Τα ιστορικά Earnings Revisions λείπουν ακόμη** και δεν εμφανίζουμε πλασματικά six-feature αποτελέσματα.
