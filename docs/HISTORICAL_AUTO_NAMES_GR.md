@@ -46,3 +46,60 @@ The SEC indexes are cached as `.idx.gz` and later runs reuse them. Once the firs
 - Old/new corporation names can be very different. Do not merge predecessor and acquirer under one security_id or CIK without transaction-level evidence.
 - No automatic approval, security_id assignment, or inclusion in ML training. The canonical `verified_crosswalk.csv` stays local and requires human evidence.
 - If Wikipedia or the pinned GitHub source becomes unavailable, audit its error and use cached files; do not report missing hints as confirmed security delistings.
+
+## Curated SEC legal-name hints (v0.6, November 2026)
+
+Added 40 curated legal-name search hints (AABA through WYND) to
+`data/universe/historical/ticker_name_hints.csv`, replacing the older
+AABA and BCR hints without duplicating their ticker rows. There are now
+58 ticker hints in the file, 40 with source `CURATED_SEC_LEGAL_NAMES`.
+
+These names are **search strings only**: neither the name match nor an
+SEC CIK candidate establishes ticker/share-class identity. If FRC or
+SBNY fail in the four selected Q1 indexes, inspect additional filing
+quarters, alternate SEC entity names, and bank-regulatory sources;
+do not assume those companies never filed with the SEC.
+
+### Re-run after pulling
+
+```powershell
+git pull origin main
+$env:SEC_USER_AGENT="Actual Name actual-email@example.com"
+python -m pytest -q
+python 12_build_historical_crosswalk.py --index-years 2015,2018,2021,2025 --index-quarters 1
+```
+
+Review the unique tickers in
+`results/historical_crosswalk/candidate_crosswalk.csv` and the
+`crosswalk_audit.json` errors before interpreting coverage. The
+historical unresolved inventory is recomputed from the **latest**
+`results/free_source_coverage` outputs. If a reviewed local crosswalk
+was previously loaded into script 11, the unresolved inventory will
+change; the count of 40 is not a permanent expected assertion.
+
+### User-supplied 107-row crosswalk schema
+
+The reviewed CSV shape matches `finance.historical_identity.COLUMNS`:
+`security_id,cik,historical_ticker,valid_from,valid_to,company_name,corporate_action,mapping_source,verification_status`.
+
+The parser checks column presence, status, dates, CIK, identifier
+non-emptiness, source-URL syntax, and ticker-interval overlaps. It
+**does not verify primary-source sufficiency or corporate-action
+accuracy**. In particular, `master.idx | submissions` URLs may
+establish name→CIK but **not historical ticker→share class→CIK**.
+The source CSV's labels `verified` are assertions by its author, not
+independent historical-identity evidence. Keep the file local and
+gitignored until a dated share-class/ticker review has been completed.
+Do not bulk-promote `candidate_unverified` rows.
+
+To validate locally **without publishing any crosswalk**, copy the
+manually reviewed file to
+`data/universe/historical/verified_crosswalk.csv` and run:
+
+```powershell
+python -c "from pathlib import Path; from finance.historical_identity import verified_crosswalk; p=Path('data/universe/historical/verified_crosswalk.csv'); d=verified_crosswalk(p); print('Parsed rows:', sum(map(len,d.values())))"
+```
+
+Only after independent verification should step 11 consume that path.
+The `--prices` mode is an exploratory Yahoo price-presence probe, not
+a PIT-adjusted total-return collection or delisting validation.
