@@ -29,3 +29,9 @@ data/vendor/**
 results/**
 !results/.gitkeep
 *.zip
+
+# Historical identity review/approval: private working evidence and downloaded SEC cache.
+data/universe/historical/verified_crosswalk.csv
+results/historical_crosswalk/**
+results/free_source_coverage/**
+data/cache/**

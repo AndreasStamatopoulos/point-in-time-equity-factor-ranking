@@ -138,3 +138,22 @@ The dataset is a retrospective reconstruction, not an audited PIT security
 master. The old 24-stock baseline and the current 165-stock snapshot remain
 **separate**. Do not claim a 500-stock predictive backtest until verified
 historical adjusted returns, delistings, filing vintages, and security IDs exist.
+
+
+## Phase 3 — SEC historical identity crosswalk and resumable coverage audits
+
+The new [crosswalk script](12_build_historical_crosswalk.py) reads all years of the local
+`annual_coverage.csv` and `per_security_coverage.csv`, inventories every historical ticker
+without a current SEC CIK match, and searches dated SEC EDGAR `master.idx` filenames and
+company names plus `submissions` former names to propose *candidates for human review*.
+**SEC EDGAR index records do not prove historical ticker identity**, and no candidate is
+automatically labeled verified.
+
+The updated [coverage probe](11_collect_sec_price_audit.py) honors independently approved
+`verified_crosswalk.csv` rows on their documented dates, persists CompanyFacts by CIK,
+caches Yahoo presence checks, and supports `--max-symbols 20 --offset 20 --prices` resume.
+Raw caches and approved mappings remain local/ignored by Git; candidate review outputs
+are *not* a dataset for model training.
+
+Read the [Greek runbook](docs/HISTORICAL_CROSSWALK_RUNBOOK_GR.md) for exact commands,
+source limitations, review requirements and local output locations.
