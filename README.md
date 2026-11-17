@@ -157,3 +157,20 @@ are *not* a dataset for model training.
 
 Read the [Greek runbook](docs/HISTORICAL_CROSSWALK_RUNBOOK_GR.md) for exact commands,
 source limitations, review requirements and local output locations.
+
+
+## Auto historical ticker-name hints (v0.5)
+
+`12_build_historical_crosswalk.py` now extracts unverified name candidates for historical S&P 500 ticker aliases via the Wikipedia S&P **Added/Removed** table and a pinned 2016–2026 GitHub monthly constituent-name dataset, with local HTTP cache. The previously malformed `ticker_name_hints.csv` has been corrected to a proper CSV. 
+
+**Beware:** the monthly GitHub dataset retroactively replaces some old tickers with modern symbols (e.g. ELV and META in old snapshots). This dataset supplies **name search hints only**, never verified historical security identity. SEC `master.idx` provides legal names and CIK, not historical ticker mappings. The crosswalk **cannot** mark a CIK verified automatically.
+
+Start with:
+
+```bash
+pip install -r requirements-data.txt
+python 12_build_historical_crosswalk.py --skip-indexes --snapshot-step-months 3
+python 12_build_historical_crosswalk.py --index-years 2015,2018,2021,2025 --index-quarters 1
+```
+
+See [Greek auto-hints runbook](docs/HISTORICAL_AUTO_NAMES_GR.md).

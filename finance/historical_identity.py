@@ -33,7 +33,13 @@ def symbol(s: str) -> str:
 
 
 def normalize_company(name: str) -> str:
-    name = re.sub(r"[^A-Z0-9 ]", " ", (name or "").upper())
+    # EDGAR filer names frequently end in legal domicile tags such as
+    # "AETNA INC /PA/" or "COMPANY INC/DE/". The tag is not part of the
+    # registrant's name and must not defeat an otherwise exact hint match.
+    # Strip it only when it appears at the end of the original name.
+    name = (name or "").upper().strip()
+    name = re.sub(r"\s*/[A-Z]{2,3}/\s*$", "", name)
+    name = re.sub(r"[^A-Z0-9 ]", " ", name)
     tokens = [x for x in name.split() if x not in {
         "INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "LTD", "LIMITED",
         "PLC", "LLC", "THE", "HOLDING", "HOLDINGS", "GROUP", "LP", "SA", "NV"}]
@@ -225,22 +231,42 @@ def find_verified(verified: dict, ticker: str, at: str) -> dict | None:
     return candidates[0] if candidates else None
 
 
-def index_matches(rows: list[dict], hints: dict[str, str], *, threshold: float = 0.91):
-    """Filing-name matches are CIK *candidates*, not proof of historical ticker."""
+def index_matches(rows: list[dict], hints: dict[str, str | list[str]], *, threshold: float = 0.91):
+    """Match company names against EDGAR, with exact-hash and restricted fuzzy passes.
+
+    Supports multiple historical names per ticker. Name/CiK is a *candidate*,
+    NEVER proof that a security traded under that ticker. Fuzzy matches are
+    bucketed by first significant token to keep large SEC indexes tractable.
+    """
+    exact = {}  # normalized company name -> [(ticker, original_hint), ...]
+    fuzzy = {}  # first significant token -> candidate names
+    for sym, raw in hints.items():
+        values = [raw] if isinstance(raw, str) else raw
+        for name in values:
+            norm = normalize_company(name)
+            if not norm:
+                continue
+            exact.setdefault(norm, set()).add(sym)
+            fuzzy.setdefault(norm.split()[0], set()).add((norm, sym))
+
     results: dict[str, dict[int, dict]] = {}
-    names = {sym: normalize_company(n) for sym, n in hints.items() if n}
     for filing in rows:
         reg_name = normalize_company(filing["name"])
         if not reg_name:
             continue
-        for sym, hint in names.items():
-            if not hint:
-                continue
-            ratio = SequenceMatcher(None, hint, reg_name).ratio()
-            if hint == reg_name or ratio >= threshold:
-                match = {**filing, "match_type": "exact_company_name" if hint == reg_name else "similar_company_name",
-                         "score": round(ratio, 5)}
-                prior = results.setdefault(sym, {}).get(filing["cik"])
-                if prior is None or match["score"] > prior["score"]:
-                    results[sym][filing["cik"]] = match
+        matches = [(ticker, 1.0, 'exact_company_name') for ticker in exact.get(reg_name, ())]
+        if not matches:
+            # Fuzzy matching only for plausible shared initial company token.
+            # Full unrestricted all-pairs matching is very expensive for EDGAR.
+            for hint, ticker in fuzzy.get(reg_name.split()[0], ()):
+                if abs(len(hint) - len(reg_name)) > max(4, int(len(hint) * .2)):
+                    continue
+                ratio = SequenceMatcher(None, hint, reg_name).ratio()
+                if ratio >= threshold:
+                    matches.append((ticker, ratio, 'similar_company_name'))
+        for ticker, ratio, match_type in matches:
+            match = {**filing, 'match_type': match_type, 'score': round(ratio, 5)}
+            prior = results.setdefault(ticker, {}).get(filing['cik'])
+            if prior is None or match['score'] > prior['score']:
+                results[ticker][filing['cik']] = match
     return results

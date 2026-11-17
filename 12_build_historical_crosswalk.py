@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
+from finance.historical_names import (HistoricalNameSources, names_for_unresolved)
 from finance.historical_identity import (COLUMNS, SECClient, atomic_csv,
     find_verified, index_matches, normalize_company, read_csv, symbol,
     verified_crosswalk)
@@ -100,18 +101,50 @@ def build(args, client: SECClient):
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Historical ticker-to-company names are SEARCH HINTS, not SEC CIK proof.
+    # Wiki selected changes give the original removed/added ticker. The separate
+    # monthly repository may backfill current tickers into earlier snapshots,
+    # so source provenance is retained in all review tables.
+    historical = HistoricalNameSources(Path(getattr(args, 'cache_dir', ROOT / 'data/cache')), offline=getattr(args, 'offline', False))
+    discovered = {}
+    if getattr(args, 'historical_names', False):
+        observed = historical.collect(
+            wikipedia=not getattr(args, 'skip_wikipedia', False),
+            monthly=not getattr(args, 'skip_monthly', False),
+            monthly_step=getattr(args, 'snapshot_step_months', 3))
+        discovered = names_for_unresolved(observed, set(outstanding), history)
+
+    name_variants = {}
+    for ticker in outstanding:
+        names = {}
+        manual = (hints.get(ticker, {}).get('company_name_hint') or '').strip()
+        if manual:
+            names[manual.casefold()] = (manual, hints[ticker].get('hint_source',''))
+        for hint in discovered.get(ticker, []):
+            names.setdefault(hint.name.casefold(), (hint.name, hint.source))
+        name_variants[ticker] = list(names.values())
+
+    name_rows = [{'historical_ticker': t, 'company_name_hint': n, 'hint_source': src,
+                  'verification_status': 'UNVERIFIED_SEARCH_HINT'}
+                 for t, values in name_variants.items() for n, src in values]
+    atomic_csv(out / 'historical_name_hints.csv', name_rows,
+               ['historical_ticker', 'company_name_hint', 'hint_source', 'verification_status'])
+
     queue = []
     for ticker, years in outstanding.items():
         hint = hints.get(ticker, {})
+        variants = name_variants.get(ticker, [])
         queue.append({"historical_ticker": ticker,
                       "years_unresolved": ",".join(map(str, sorted(years))),
-                      "company_name_hint": hint.get("company_name_hint", ""),
+                      "company_name_hint": variants[0][0] if variants else "",
+                      "company_name_variants": " | ".join(n for n, src in variants),
+                      "hint_count": len(variants),
                       "cik_hint": hint.get("cik_hint", ""),
-                      "hint_source": hint.get("hint_source", ""),
+                      "hint_source": variants[0][1] if variants else hint.get("hint_source", ""),
                       "review_status": "NEEDS_EXTERNAL_TICKER_IDENTITY_EVIDENCE"})
     atomic_csv(out / "unresolved_review_queue.csv", queue,
-               ["historical_ticker", "years_unresolved", "company_name_hint", "cik_hint",
-                "hint_source", "review_status"])
+               ["historical_ticker", "years_unresolved", "company_name_hint", "company_name_variants",
+                "hint_count", "cik_hint", "hint_source", "review_status"])
 
     selected = list(outstanding)
     if args.max_symbols > 0:
@@ -121,16 +154,29 @@ def build(args, client: SECClient):
 
     candidates_by_sym = defaultdict(dict)
     errors = []
+    hint_names = {ticker: [name for name, src in name_variants.get(ticker, [])]
+                  for ticker in selected if name_variants.get(ticker)}
+    index_diagnostics = []
     if not args.skip_indexes:
+        if not hint_names and not any(hints.get(t, {}).get("cik_hint", "").strip() for t in selected):
+            raise ValueError("No historical company-name/CIK hints among selected symbols. "
+                             "Check --hints or fill ticker_name_hints.csv before downloading SEC indexes.")
         years = [int(x) for x in args.index_years.split(",") if x.strip()]
         quarters = [int(x) for x in args.index_quarters.split(",") if x.strip()]
-        hint_names = {ticker: hints[ticker]["company_name_hint"] for ticker in selected
-                      if ticker in hints and hints[ticker].get("company_name_hint")}
         for year in years:
             for quarter in quarters:
+                stat = {"index": f"{year}Q{quarter}", "filing_rows_scanned": 0,
+                        "matched_tickers": 0, "matched_cik_pairs": 0}
                 try:
-                    matches = index_matches(client.master_index(year, quarter), hint_names,
+                    def counted_filings():
+                        for filing in client.master_index(year, quarter):
+                            stat["filing_rows_scanned"] += 1
+                            yield filing
+                    matches = index_matches(counted_filings(), hint_names,
                                             threshold=args.name_match_threshold)
+                    stat["matched_tickers"] = len(matches)
+                    stat["matched_cik_pairs"] = sum(len(v) for v in matches.values())
+                    index_diagnostics.append(stat)
                 except Exception as exc:
                     errors.append({"source": f"EDGAR master.idx {year}Q{quarter}",
                                    "error": f"{type(exc).__name__}: {str(exc)[:220]}"})
@@ -178,9 +224,11 @@ def build(args, client: SECClient):
             for cik, hit in sorted(by_cik.items(), key=lambda item: -item[1]["score"])[:args.max_candidates]:
                 sub = submissions.get(cik, {})
                 former = sub.get("formerNames", [])
-                historical_hint = hints.get(ticker, {}).get("company_name_hint", "")
-                formerly = [x for x in former if normalize_company(x.get("name", "")) == normalize_company(historical_hint)]
-                notes = [hit.get("match_type", ""), "SEC filings give NAME->CIK, NOT historical ticker->CIK"]
+                historical_names = hint_names.get(ticker, [])
+                normalized_names = {normalize_company(n) for n in historical_names}
+                formerly = [x for x in former if normalize_company(x.get("name", "")) in normalized_names]
+                notes = [hit.get("match_type", ""), "SEC filings give NAME->CIK, NOT historical ticker->CIK",
+                         "hint_sources=" + " | ".join(src for n, src in name_variants.get(ticker, [])[:4])]
                 if formerly:
                     notes.append("former legal name in SEC submissions")
                 if sub.get("tickers"):
@@ -199,6 +247,16 @@ def build(args, client: SECClient):
             "symbols_processed_this_run": len(selected), "unresolved_without_candidate_rows": status["unresolved"],
             "sec_name_candidates_not_verified": status["candidate_unverified"],
             "manually_verified_rows_from_input": status["verified"],
+            "name_hints_loaded": len(hints),
+            "auto_name_hints_from_historical_sources": sum(len(v) for v in discovered.values()),
+            "unique_unresolved_with_name_hints": sum(bool(name_variants[t]) for t in outstanding),
+            "selected_symbols_with_company_name_hint": len(hint_names),
+            "selected_symbols_without_company_name_hint": len(selected) - len(hint_names),
+            "historical_names_cache_hits": historical.cache_hits,
+            "historical_names_network_requests": historical.network_requests,
+            "historical_name_source_errors": historical.errors,
+            "symbols_with_candidate_cik": sum(bool(candidates_by_sym.get(t)) for t in selected),
+            "edgar_index_diagnostics": index_diagnostics,
             "cache_hits": client.cache_hits, "network_requests": client.network_requests,
             "sec_errors": errors, "warning": "SEC master.idx and formerNames never certify ticker identity."
             " No model training permitted until verified_crosswalk explicitly approved."}
@@ -226,7 +284,13 @@ def main():
     p.add_argument("--name-match-threshold", type=float, default=0.92)
     p.add_argument("--sec-delay", type=float, default=0.4)
     p.add_argument("--offline", action="store_true", help="Use cached SEC files only; report unavailable lookups honestly")
-    p.add_argument("--skip-indexes", action="store_true", help="Prepare full unresolved queue without SEC index downloads")
+    p.add_argument("--skip-indexes", action="store_true", help="Prepare review queue without SEC index downloads")
+    p.add_argument("--historical-names", action=argparse.BooleanOptionalAction, default=True,
+                   help="Auto-download/cache historical S&P ticker+company-name hints (default on)")
+    p.add_argument("--skip-wikipedia", action="store_true", help="Skip Wikipedia historical change table")
+    p.add_argument("--skip-monthly", action="store_true", help="Skip pinned 2016-2026 reconstructed monthly name snapshots")
+    p.add_argument("--snapshot-step-months", type=int, choices=[1, 3, 6, 12], default=3,
+                   help="Read every 3rd historical monthly names file by default; 1=all 124 months")
     args = p.parse_args()
     if args.max_symbols < 0 or args.offset < 0 or args.max_candidates < 1:
         p.error("invalid limits")
